@@ -208,8 +208,6 @@ found:
   for (int i = 0; i < 5; i++)
     p->queue[i] = 0;
 
-  // enque(&Queue[p->level], p);
-
   return p;
 }
 
