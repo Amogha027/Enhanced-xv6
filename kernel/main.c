@@ -27,8 +27,10 @@ main()
     binit();         // buffer cache
     iinit();         // inode table
     fileinit();      // file table
+    mlfqinit();      // initialise queues for mlfq
     virtio_disk_init(); // emulated hard disk
     userinit();      // first user process
+    page_reference_init(); // initialising pages
     __sync_synchronize();
     started = 1;
   } else {

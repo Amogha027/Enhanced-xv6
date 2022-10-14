@@ -89,3 +89,75 @@ sys_uptime(void)
   release(&tickslock);
   return xticks;
 }
+
+uint64
+sys_waitx(void)
+{
+  uint64 addr, addr1, addr2;
+  uint wtime, rtime;
+  argaddr(0, &addr);
+  argaddr(1, &addr1); // user virtual memory
+  argaddr(2, &addr2);
+  int ret = waitx(addr, &wtime, &rtime);
+  struct proc* p = myproc();
+  if (copyout(p->pagetable, addr1,(char*)&wtime, sizeof(int)) < 0)
+    return -1;
+  if (copyout(p->pagetable, addr2,(char*)&rtime, sizeof(int)) < 0)
+    return -1;
+  return ret;
+}
+
+uint64
+sys_trace(void)
+{
+  int c;
+  argint(0, &c);
+  trace(c);
+  return 1;
+}
+
+uint64
+sys_sigalarm(void)
+{
+  int ticks;
+  uint64 handler;
+  argint(0, &ticks);
+  argaddr(1, &handler);
+  myproc()->is_sigalarm = 0;
+  myproc()->ticks = ticks;
+  myproc()->now_ticks = 0;
+  myproc()->handler = handler;
+  return 1;
+}
+
+uint64
+sys_sigreturn(void)
+{
+  struct proc *p = myproc();
+  p->trapframe_copy->kernel_satp = p->trapframe->kernel_satp;
+  p->trapframe_copy->kernel_sp = p->trapframe->kernel_sp;
+  p->trapframe_copy->kernel_trap = p->trapframe->kernel_trap;
+  p->trapframe_copy->kernel_hartid = p->trapframe->kernel_hartid;
+  *(p->trapframe) = *(p->trapframe_copy);
+  myproc()->is_sigalarm = 0;
+  return myproc()->trapframe->a0;
+}
+
+uint64
+sys_settickets(void)
+{
+  int c;
+  argint(0, &c);
+  settickets(c);
+  return 1;
+}
+
+uint64
+sys_set_priority(void)
+{
+  int priority, pid;
+  argint(0, &priority);
+  argint(1, &pid);
+  set_priority(priority, pid);
+  return 1;
+}

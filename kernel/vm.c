@@ -15,6 +15,8 @@ extern char etext[];  // kernel.ld sets this to end of kernel code.
 
 extern char trampoline[]; // trampoline.S
 
+extern int page_reference[];
+
 // Make a direct-map page table for the kernel.
 pagetable_t
 kvmmake(void)
@@ -332,6 +334,37 @@ uvmcopy(pagetable_t old, pagetable_t new, uint64 sz)
   return -1;
 }
 
+int
+uvmcopy_cow(pagetable_t old, pagetable_t new, uint64 sz)
+{
+  pte_t *pte;
+  uint64 pa, i;
+  uint flags;
+
+  for (i = 0; i < sz; i += PGSIZE)
+  {
+    if ((pte = walk(old, i, 0)) == 0)
+      panic("uvmcopy: pte should exist");
+    if ((*pte & PTE_V) == 0)
+      panic("uvmcopy: page not present");
+    pa = PTE2PA(*pte);
+    flags = PTE_FLAGS(*pte);
+    flags &= ~PTE_W;
+    flags |= PTE_COW;
+    *pte = PA2PTE(pa) | flags;
+    page_reference[(uint64)pa >> 12] += 1;
+    if (mappages(new, i, PGSIZE, pa, flags) != 0)
+    {
+      kfree((void *)pa);
+      goto err;
+    }
+  }
+  return 0;
+err:
+  uvmunmap(new, 0, i / PGSIZE, 1);
+  return -1;
+}
+
 // mark a PTE invalid for user access.
 // used by exec for the user stack guard page.
 void
@@ -352,14 +385,46 @@ int
 copyout(pagetable_t pagetable, uint64 dstva, char *src, uint64 len)
 {
   uint64 n, va0, pa0;
-
-  while(len > 0){
+  while (len > 0)
+  {
     va0 = PGROUNDDOWN(dstva);
     pa0 = walkaddr(pagetable, va0);
-    if(pa0 == 0)
+    if (pa0 == 0)
       return -1;
+    pte_t *pte = walk(pagetable, va0, 0);
+    uint64 flags = PTE_FLAGS(*pte);
+    if (flags && PTE_COW)
+    {
+      pte_t *pte = walk(pagetable, (uint64)va0, 0);
+      if (pte == 0)
+      {
+        continue;
+      }
+      uint64 pa = PTE2PA(*pte);
+      if (pa == 0)
+      {
+        continue;
+      }
+      uint flags = PTE_FLAGS(*pte);
+      if (flags & PTE_COW)
+      {
+        flags |= PTE_W;
+        flags &= ~PTE_COW;
+        char *mem;
+        mem = kalloc();
+        if (mem == 0)
+        {
+          continue;
+        }
+        memmove(mem, (void *)pa, PGSIZE);
+
+        *pte = PA2PTE(mem) | flags;
+        kfree((void *)pa);
+      }
+      pa0 = walkaddr(pagetable, va0);
+    }
     n = PGSIZE - (dstva - va0);
-    if(n > len)
+    if (n > len)
       n = len;
     memmove((void *)(pa0 + (dstva - va0)), src, n);
 

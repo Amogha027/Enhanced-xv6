@@ -104,4 +104,34 @@ struct proc {
   struct file *ofile[NOFILE];  // Open files
   struct inode *cwd;           // Current directory
   char name[16];               // Process name (debugging)
+  int mask;                    // mask for tracing syscalls
+  int tickets;                 // number of tickets
+
+  uint rtime;                  // How long the process ran for
+  uint ctime;                  // When was the process created 
+  uint etime;                  // When did the process exited
+
+  // sig_alarm and sig_return
+  int is_sigalarm;             // how many ticks have passed
+  int ticks;                   // value passes by the syscall
+  int now_ticks;               // time spent till now
+  uint64 handler;              // handler for sigalarm
+  struct trapframe *trapframe_copy;
+
+  // priority based scheduler
+  int priority;               // priority of the process
+  int niceness;               // niceness of the process
+  int sleeping_time;          // Sleeping time of the process
+  int no_times_running;       // Number of times the process has been scheduled
+
+  // multi-level feedback queue
+  int level;                   // level to which process belongs to
+  int time;                    // time since the process entered the queue
+  int inside;                  // check if process is inside any queue
+  int queue[5];                // time spent in each queue
+};
+
+struct _queue {
+  int front, rear, size;
+  struct proc *arr[NPROC + 1];
 };

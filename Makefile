@@ -48,6 +48,10 @@ TOOLPREFIX := $(shell if riscv64-unknown-elf-objdump -i 2>&1 | grep 'elf64-big' 
 	echo "***" 1>&2; exit 1; fi)
 endif
 
+ifndef SCHEDULER
+	SCHEDULER := ROUND_ROBIN
+endif
+
 QEMU = qemu-system-riscv64
 
 CC = $(TOOLPREFIX)gcc
@@ -61,6 +65,7 @@ CFLAGS += -MD
 CFLAGS += -mcmodel=medany
 CFLAGS += -ffreestanding -fno-common -nostdlib -mno-relax
 CFLAGS += -I.
+CFLAGS += -D $(SCHEDULER)
 CFLAGS += $(shell $(CC) -fno-stack-protector -E -x c /dev/null >/dev/null 2>&1 && echo -fno-stack-protector)
 
 # Disable PIE when possible (for Ubuntu 16.10 toolchain)
@@ -116,7 +121,9 @@ mkfs/mkfs: mkfs/mkfs.c $K/fs.h $K/param.h
 .PRECIOUS: %.o
 
 UPROGS=\
+	$U/_alarmtest\
 	$U/_cat\
+	$U/_cowtest\
 	$U/_echo\
 	$U/_forktest\
 	$U/_grep\
@@ -126,8 +133,12 @@ UPROGS=\
 	$U/_ls\
 	$U/_mkdir\
 	$U/_rm\
+	$U/_schedulertest\
+	$U/_setpriority\
 	$U/_sh\
+	$U/_strace\
 	$U/_stressfs\
+	$U/_time\
 	$U/_usertests\
 	$U/_grind\
 	$U/_wc\
@@ -153,7 +164,7 @@ QEMUGDB = $(shell if $(QEMU) -help | grep -q '^-gdb'; \
 	then echo "-gdb tcp::$(GDBPORT)"; \
 	else echo "-s -p $(GDBPORT)"; fi)
 ifndef CPUS
-CPUS := 3
+CPUS := 5
 endif
 
 QEMUOPTS = -machine virt -bios none -kernel $K/kernel -m 128M -smp $(CPUS) -nographic

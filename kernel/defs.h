@@ -8,6 +8,7 @@ struct spinlock;
 struct sleeplock;
 struct stat;
 struct superblock;
+struct _queue;
 
 // bio.c
 void            binit(void);
@@ -63,6 +64,7 @@ void            ramdiskrw(struct buf*);
 void*           kalloc(void);
 void            kfree(void *);
 void            kinit(void);
+void            page_reference_init(void);
 
 // log.c
 void            initlog(int, struct superblock*);
@@ -101,11 +103,21 @@ void            sched(void);
 void            sleep(void*, struct spinlock*);
 void            userinit(void);
 int             wait(uint64);
+int             waitx(uint64, uint*, uint*);
 void            wakeup(void*);
 void            yield(void);
 int             either_copyout(int user_dst, uint64 dst, void *src, uint64 len);
 int             either_copyin(void *dst, int user_src, uint64 src, uint64 len);
 void            procdump(void);
+void            update_time(void);
+int             trace(int);
+int             settickets(int);
+int             set_priority(int, int);
+int             calculate_priority(struct proc *);
+void            mlfqinit();
+struct proc*    deque(struct _queue *);
+void            enque(struct _queue *, struct proc *);
+void            update(struct _queue *, int, int);
 
 // swtch.S
 void            swtch(struct context*, struct context*);
@@ -173,6 +185,7 @@ uint64          walkaddr(pagetable_t, uint64);
 int             copyout(pagetable_t, uint64, char *, uint64);
 int             copyin(pagetable_t, char *, uint64, uint64);
 int             copyinstr(pagetable_t, char *, uint64, uint64);
+int             uvmcopy_cow(pagetable_t , pagetable_t, uint64);
 
 // plic.c
 void            plicinit(void);

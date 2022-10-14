@@ -16,6 +16,8 @@ void kernelvec();
 
 extern int devintr();
 
+int max_time[] = {1, 2, 4, 8, 16};
+
 void
 trapinit(void)
 {
@@ -65,7 +67,41 @@ usertrap(void)
     intr_on();
 
     syscall();
-  } else if((which_dev = devintr()) != 0){
+  }
+  else if (r_scause() == 15 || r_scause() == 13)
+  {
+    uint64 va = PGROUNDDOWN(r_stval());
+    pte_t *pte = walk(p->pagetable, (uint64)va, 0);
+    if (pte == 0)
+    {
+      setkilled(p);
+      goto end;
+    }
+    uint64 pa = PTE2PA(*pte);
+    if (pa == 0)
+    {
+      setkilled(p);
+      goto end;
+    }
+    uint flags = PTE_FLAGS(*pte);
+    if (flags & PTE_COW)
+    {
+      flags |= PTE_W;
+      flags &= ~PTE_COW;
+      char *mem;
+      mem = kalloc();
+      if (mem == 0)
+      {
+        setkilled(p);
+        goto end;
+      }
+      memmove(mem, (void *)pa, PGSIZE);
+
+      *pte = PA2PTE(mem) | flags;
+      kfree((void *)pa);
+    }
+  }
+  else if((which_dev = devintr()) != 0){
     // ok
   } else {
     printf("usertrap(): unexpected scause %p pid=%d\n", r_scause(), p->pid);
@@ -73,12 +109,45 @@ usertrap(void)
     setkilled(p);
   }
 
+end:
   if(killed(p))
     exit(-1);
 
-  // give up the CPU if this is a timer interrupt.
-  if(which_dev == 2)
+// give up the CPU if this is a timer interrupt.
+#if defined(ROUND_ROBIN)
+  if(which_dev == 2) {
+    p->now_ticks++;
+    if(p->ticks && p->now_ticks >= p->ticks && !p->is_sigalarm) {
+      p->now_ticks = 0;
+      p->is_sigalarm = 1;
+      *(p->trapframe_copy) = *(p->trapframe);
+      p->trapframe->epc = p->handler;
+    }
     yield();
+  }
+#elif defined(LBS)
+  if(which_dev == 2) {
+    p->now_ticks++;
+    if(p->ticks && p->now_ticks >= p->ticks && !p->is_sigalarm) {
+      p->now_ticks = 0;
+      p->is_sigalarm = 1;
+      *(p->trapframe_copy) = *(p->trapframe);
+      p->trapframe->epc = p->handler;
+    }
+    yield();
+  }
+#elif defined(MLFQ)
+  if(which_dev == 2){
+    if(p->queue[p->level] >= max_time[p->level]){
+      p->queue[p->level] = 0;
+      if(p->level < 4){
+        p->inside = 0;
+        p->level++;
+      }
+      yield();
+    }
+  }
+#endif
 
   usertrapret();
 }
@@ -150,9 +219,26 @@ kerneltrap()
     panic("kerneltrap");
   }
 
-  // give up the CPU if this is a timer interrupt.
+// give up the CPU if this is a timer interrupt.
+#if defined(ROUND_ROBIN)
   if(which_dev == 2 && myproc() != 0 && myproc()->state == RUNNING)
     yield();
+#elif defined(LBS)
+  if(which_dev == 2 && myproc() != 0 && myproc()->state == RUNNING)
+    yield();
+#elif defined(MLFQ)
+  if(which_dev == 2 && myproc() != 0 && myproc()->state == RUNNING){
+    struct proc *p = myproc();
+    if(p->queue[p->level] >= max_time[p->level]){
+      p->queue[p->level] = 0;
+      if(p->level < 4){
+        p->level++;
+        p->inside = 0;
+      }
+      yield();
+    }
+  }
+#endif
 
   // the yield() may have caused some traps to occur,
   // so restore trap registers for use by kernelvec.S's sepc instruction.
@@ -165,6 +251,7 @@ clockintr()
 {
   acquire(&tickslock);
   ticks++;
+  update_time();
   wakeup(&ticks);
   release(&tickslock);
 }
