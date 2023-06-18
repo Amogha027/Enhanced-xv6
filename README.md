@@ -1,6 +1,7 @@
 # Enhancing XV-6
 
-> ### Team : Ishit Bansal (2021101083) & Amogha A Halhalli (2021101007)
+> ### Name: Amogha A Halhalli 
+> ### Roll No.: 2021101007
 ----
 <br >
 
